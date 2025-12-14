@@ -1,96 +1,72 @@
 %{
 #include <stdio.h>
 #include <stdlib.h>
-extern int yylex(void);  // Declare the lexer function
-extern FILE *yyin;  // Declare yyin as an external variable
-void yyerror(const char *s);  // Declare the error reporting function
+#include <string.h>
+
+extern int yylex();
+extern int yylineno;
+void yyerror(const char *s);
 %}
 
 %union {
-    int val;  // Declare the value type for the symbols (here, integers)
+    int val;
 }
 
 %token <val> INT
-%token PLUS MINUS MUL DIV LPAREN RPAREN NEG
+%token PLUS MINUS MUL DIV LPAREN RPAREN
 
-%type <val> E T F E_prime T_prime
+%type <val> E T F
 
-%left PLUS MINUS  // Addition and subtraction have the same precedence (left-associative)
-%left MUL DIV     // Multiplication and division have higher precedence (left-associative)
-%right NEG        // Unary minus has the highest precedence (right-associative)
-%left '(' ')'
-
-%%
-
-E: T E_prime {
-    $$ = $1 + $2;  // Evaluate the expression after T
-}
-
-E_prime:
-    PLUS T E_prime {
-        $$ = $2 + $3;  // Handle addition
-    }
-    | MINUS T E_prime {
-        $$ = $2 - $3;  // Handle subtraction
-    }
-    | /* empty */ {
-        $$ = 0;  // Base case: no more operations, so just return 0
-    }
-    ;
-
-T: F T_prime {
-    $$ = $1 * $2;  // Handle multiplication and division
-}
-
-T_prime:
-    MUL F T_prime {
-        $$ = $2 * $3;  // Handle multiplication
-    }
-    | DIV F T_prime {
-        if ($3 == 0) {
-            yyerror("Division by zero");
-            exit(1);
-        }
-        $$ = $2 / $3;  // Handle division
-    }
-    | /* empty */ {
-        $$ = 1;  // Base case: no more multiplication or division, return 1
-    }
-    ;
-
-F: INT {
-    $$ = $1;  // Integer value is just the token
-}
- | LPAREN E RPAREN {
-    $$ = $2;  // Parentheses, evaluate the expression inside the parentheses
-}
- | MINUS F %prec NEG {
-    $$ = -$2;  // Handle unary minus, negate the value
-}
- ;
+%left PLUS MINUS
+%left MUL DIV
+%right NEG
 
 %%
 
-int main() {
-    // Open the file "pa2_test_cases.txt" for reading.
-    FILE *file = fopen("pa2_test_cases.txt", "r");
-    if (!file) {
-        fprintf(stderr, "Error opening file.\n");
-        return 1;
-    }
+input:
+      /* empty */
+    | input line
+    ;
 
-    // Redirect input to the file.
-    yyin = file;
+line:
+      E '\n'     { printf("Result = %d\n", $1); }
+    | error '\n' { printf("Invalid expression\n"); yyerrok; }
+    ;
 
-    // Start parsing.
-    yyparse();
+E:
+      E PLUS T   { $$ = $1 + $3; }
+    | E MINUS T  { $$ = $1 - $3; }
+    | T          { $$ = $1; }
+    ;
 
-    // Close the file after processing.
-    fclose(file);
+T:
+      T MUL F    { $$ = $1 * $3; }
+    | T DIV F    {
+                    if ($3 == 0) {
+                        yyerror("Division by zero");
+                        YYERROR;
+                    }
+                    $$ = $1 / $3;
+                 }
+    | F          { $$ = $1; }
+    ;
 
-    return 0;
-}
+F:
+      INT                { $$ = $1; }
+    | LPAREN E RPAREN    { $$ = $2; }
+    | MINUS F %prec NEG  { $$ = -$2; }
+    ;
+
+%%
 
 void yyerror(const char *s) {
-    fprintf(stderr, "Error: %s\n", s);
+    // Only print runtime errors; suppress default syntax error
+    if (strcmp(s, "syntax error") != 0) {
+        fprintf(stderr, "Error: %s at line %d\n", s, yylineno);
+    }
+}
+
+int main() {
+    yyparse();
+    return 0;
 }
